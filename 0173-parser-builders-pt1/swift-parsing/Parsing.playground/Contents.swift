@@ -31,8 +31,54 @@ input = """
 3,Blob Sr,admin
 """[...]
 
-enum Role {
+enum Role: String, CaseIterable {
   case admin, guest, member
+}
+
+extension Parsers {
+  public struct CaseIterableParser<Input, Output>: Parser
+  where
+    Input: Collection,
+    Input.SubSequence == Input,
+    Input.Element == UTF8.CodeUnit,
+    Output: CaseIterable & RawRepresentable,
+    Output.RawValue == String
+  {
+    @inlinable
+    public init() {}
+
+    @inlinable
+    public func parse(_ input: inout Input) -> Output? {
+      OneOfMany(Output.allCases.map { `case` in
+        StartsWith(`case`.rawValue[...].utf8).map { `case` }
+      }).parse(&input)
+    }
+  }
+}
+
+extension CaseIterable where Self: RawRepresentable, Self.RawValue == String {
+  @inlinable
+  public static func parser<Input>(
+    of inputType: Input.Type = Input.self
+  ) -> Parsers.CaseIterableParser<Input, Self> {
+    .init()
+  }
+
+  @_disfavoredOverload
+  @inlinable
+  public static func parser(
+    of inputType: Substring.UTF8View.Type = Substring.UTF8View.self
+  ) -> Parsers.CaseIterableParser<Substring.UTF8View, Self> {
+    .init()
+  }
+
+  @_disfavoredOverload
+  @inlinable
+  public static func parser(
+    of inputType: Substring.Type = Substring.self
+  ) -> Parsers.UTF8ViewToSubstring<Parsers.CaseIterableParser<Substring.UTF8View, Self>> {
+    .init(.init())
+  }
 }
 
 //let role = "admin".map { Role.admin }
@@ -175,18 +221,18 @@ struct Parse<Parsers, NewOutput>: Parser where Parsers: Parser {
   }
 }
 
-let role = OneOf {
-  "admin".map { Role.admin }
-  "guest".map { Role.guest }
-  "member".map { Role.member }
-}
+//let role = OneOf {
+//  "admin".map { Role.admin }
+//  "guest".map { Role.guest }
+//  "member".map { Role.member }
+//}
 
 let user = Parse(User.init(id:name:role:)) {
   Int.parser()
   ","
   Prefix { $0 != "," }.map(String.init)
   ","
-  role
+  Role.parser()
 }
 
 pow(2, 11)
@@ -210,11 +256,7 @@ let users = Many {
     ","
     Prefix { $0 != "," }.map(String.init)
     ","
-    OneOf {
-      "admin".map { Role.admin }
-      "guest".map { Role.guest }
-      "member".map { Role.member }
-    }
+    Role.parser()
   }
 } separator: {
   "\n"
